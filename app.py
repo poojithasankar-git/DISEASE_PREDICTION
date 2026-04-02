@@ -7,6 +7,7 @@
 import os
 import json
 import io
+import threading
 import numpy as np
 import colorsys
 from flask import Flask, request, jsonify, render_template
@@ -24,6 +25,10 @@ CLASS_NAMES = None
 IMG_SIZE = 224
 CONFIDENCE_THRESHOLD = 0.70
 GREEN_RATIO_THRESHOLD = 0.10
+MODEL_LOAD_LOCK = threading.Lock()
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH = os.path.join(BASE_DIR, "models", "banana_disease_model.h5")
+METADATA_PATH = os.path.join(BASE_DIR, "models", "class_metadata.json")
 
 DISEASE_INFO = {
     "healthy": {
@@ -105,26 +110,23 @@ def ensure_model_loaded():
     if MODEL is not None and CLASS_NAMES is not None:
         return None
 
-    print("\n🔄 Loading model into memory...")
-    try:
-        MODEL = tf.keras.models.load_model("models/banana_disease_model.h5")
-        print("✅ Model loaded successfully into memory")
+    with MODEL_LOAD_LOCK:
+        if MODEL is not None and CLASS_NAMES is not None:
+            return None
 
-        with open("models/class_metadata.json", 'r') as f:
-            metadata = json.load(f)
-            CLASS_NAMES = metadata["class_names"]
-        print(f"✅ Classes loaded: {CLASS_NAMES}")
-        return None
-    except Exception as e:
-        print(f"❌ Error loading model: {e}")
-        return str(e)
+        print("\n🔄 Loading model into memory...")
+        try:
+            MODEL = tf.keras.models.load_model(MODEL_PATH)
+            print("✅ Model loaded successfully into memory")
 
-
-# Load the model as the worker starts so the first prediction request does not
-# spend the entire request budget doing TensorFlow initialization.
-_startup_load_error = ensure_model_loaded()
-if _startup_load_error:
-    print(f"⚠️ Startup model load failed: {_startup_load_error}")
+            with open(METADATA_PATH, 'r') as f:
+                metadata = json.load(f)
+                CLASS_NAMES = metadata["class_names"]
+            print(f"✅ Classes loaded: {CLASS_NAMES}")
+            return None
+        except Exception as e:
+            print(f"❌ Error loading model: {e}")
+            return str(e)
 
 # ── API Routes ───────────────────────────────────────────────
 
