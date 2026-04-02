@@ -49,7 +49,7 @@ try:
     log_print(f"✅ Dataset downloaded: {dataset_path}")
 except Exception as e:
     log_print(f"❌ Error downloading dataset: {e}")
-    log_print("Make sure KAGGLE_USERNAME and KAGGLE_KEY environment variables are set")
+    log_print("Make sure KAGGLE_API_TOKEN is set (or KAGGLE_USERNAME and KAGGLE_KEY)")
     sys.exit(1)
 
 # ── 2. Verify dataset exists ─────────────────────────────────
