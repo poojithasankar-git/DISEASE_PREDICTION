@@ -1,0 +1,10 @@
+{
+    "class_names": ["cordana", "healthy", "pestalotiopsis", "sigatoka"],
+    "num_classes": 4,
+    "img_size": 224,
+    "accuracy": 0.9784,
+    "f1_score": 0.9775,
+    "training_epochs": 10,
+    "model_type": "ResNet50",
+    "version": "1.0"
+}

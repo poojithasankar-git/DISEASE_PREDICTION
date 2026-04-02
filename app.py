@@ -109,6 +109,7 @@ def is_confident_enough(preds, threshold=CONFIDENCE_THRESHOLD):
     conf_ok = top_conf >= threshold
     return conf_ok, top_conf
 
+<<<<<<< HEAD
 def call_backup_service(image_data, primary_prediction=None, primary_confidence=None):
     """
     Hidden secondary verification service using Gemini Vision API.
@@ -254,6 +255,29 @@ def trigger_model_warmup():
         MODEL_WARMUP_STARTED = True
 
     threading.Thread(target=ensure_model_loaded, daemon=True).start()
+=======
+# ── Model Loading ────────────────────────────────────────────
+def ensure_model_loaded():
+    """Load model into memory once when an API endpoint needs it."""
+    global MODEL, CLASS_NAMES
+
+    if MODEL is not None and CLASS_NAMES is not None:
+        return None
+
+    print("\n🔄 Loading model into memory...")
+    try:
+        MODEL = tf.keras.models.load_model("models/banana_disease_model.h5")
+        print("✅ Model loaded successfully into memory")
+
+        with open("models/class_metadata.json", 'r') as f:
+            metadata = json.load(f)
+            CLASS_NAMES = metadata["class_names"]
+        print(f"✅ Classes loaded: {CLASS_NAMES}")
+        return None
+    except Exception as e:
+        print(f"❌ Error loading model: {e}")
+        return str(e)
+>>>>>>> 3bdb21a (Fix Render 502 by lazy-loading model in API endpoints)
 
 # ── API Routes ───────────────────────────────────────────────
 
@@ -267,9 +291,12 @@ def home():
 def health():
     """Health check endpoint"""
     if MODEL is None or CLASS_NAMES is None:
+<<<<<<< HEAD
         trigger_model_warmup()
         if MODEL_LOAD_ERROR:
             return jsonify({"status": "error", "error": MODEL_LOAD_ERROR}), 500
+=======
+>>>>>>> 3bdb21a (Fix Render 502 by lazy-loading model in API endpoints)
         return jsonify({"status": "loading model"}), 202
     return jsonify({
         "status": "healthy",
@@ -281,11 +308,17 @@ def health():
 @app.route('/info', methods=['GET'])
 def info():
     """Get model and disease information"""
+<<<<<<< HEAD
     if MODEL is None or CLASS_NAMES is None:
         trigger_model_warmup()
         if MODEL_LOAD_ERROR:
             return jsonify({"error": f"Model loading failed: {MODEL_LOAD_ERROR}"}), 500
         return jsonify({"status": "loading", "message": "Model is warming up. Try again shortly."}), 202
+=======
+    load_error = ensure_model_loaded()
+    if load_error:
+        return jsonify({"error": f"Model loading failed: {load_error}"}), 500
+>>>>>>> 3bdb21a (Fix Render 502 by lazy-loading model in API endpoints)
 
     return jsonify({
         "model_name": "ResNet50 Banana Leaf Disease Classifier",
@@ -314,11 +347,17 @@ def predict():
     Returns: JSON with prediction, confidence, and treatment info
     """
     
+<<<<<<< HEAD
     if MODEL is None or CLASS_NAMES is None:
         trigger_model_warmup()
         if MODEL_LOAD_ERROR:
             return jsonify({"error": f"Model loading failed: {MODEL_LOAD_ERROR}"}), 500
         return jsonify({"status": "loading", "message": "Model is warming up. Please retry in about 30-60 seconds."}), 503
+=======
+    load_error = ensure_model_loaded()
+    if load_error:
+        return jsonify({"error": f"Model loading failed: {load_error}"}), 500
+>>>>>>> 3bdb21a (Fix Render 502 by lazy-loading model in API endpoints)
     
     # Check if image is in request
     if 'image' not in request.files:
@@ -340,7 +379,8 @@ def predict():
             return jsonify({
                 "status": "rejected",
                 "reason": "NOT_A_LEAF",
-                "message": "Image does not contain enough green content to be a banana leaf",
+                "message": "❌ This doesn't look like a banana leaf. Please upload a clear image of a banana leaf and try again.",
+                "hint": "Make sure the image shows a banana leaf clearly",
                 "green_ratio": float(green_ratio),
                 "required_ratio": GREEN_RATIO_THRESHOLD
             }), 400

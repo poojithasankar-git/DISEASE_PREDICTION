@@ -8,12 +8,12 @@ build/
 *.log
 *.h5
 *.json
-!banana_metadata.json
+!models/banana_model.h5
+!models/metadata.json
 venv/
 env/
 .venv/
 kaggle.json
-models/
 training_log.txt
 .vscode/
 .idea/
