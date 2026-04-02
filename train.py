@@ -44,7 +44,16 @@ log_print("=" * 70)
 # ── 1. Download Dataset from Kaggle ──────────────────────────
 log_print("\n📥 Downloading dataset from Kaggle...")
 try:
-    dataset_root = kagglehub.dataset_download("shifatearman/bananalsd")
+    # Support older/newer kagglehub versions with slight API differences.
+    if hasattr(kagglehub, "dataset_download"):
+        dataset_root = kagglehub.dataset_download("shifatearman/bananalsd")
+    elif hasattr(kagglehub, "download_dataset"):
+        dataset_root = kagglehub.download_dataset("shifatearman/bananalsd")
+    else:
+        raise AttributeError(
+            "kagglehub dataset download API not found. "
+            "Please upgrade kagglehub to the latest version."
+        )
     dataset_path = os.path.join(dataset_root, "BananaLSD", "OriginalSet")
     log_print(f"✅ Dataset downloaded: {dataset_path}")
 except Exception as e:
