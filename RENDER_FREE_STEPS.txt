@@ -33,9 +33,6 @@ STEP 2: CREATE RENDER ACCOUNT
 4. Authorize Render to access your GitHub
 5. Select your GitHub account
 6. Click "Continue"
-7. Enter email (or use GitHub email)
-8. Click "Create account"
-9. Verify email if needed
 
 ⏱️ Time: 2 minutes
 💰 Cost: Free
