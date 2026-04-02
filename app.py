@@ -97,26 +97,27 @@ def is_confident_enough(preds, threshold=CONFIDENCE_THRESHOLD):
     conf_ok = top_conf >= threshold
     return conf_ok, top_conf
 
-# ── Load Model on Startup ────────────────────────────────────
-@app.before_request
-def load_model():
-    """Load model into memory once on first request"""
+# ── Model Loading ────────────────────────────────────────────
+def ensure_model_loaded():
+    """Load model into memory once when an API endpoint needs it."""
     global MODEL, CLASS_NAMES
-    
-    if MODEL is None:
-        print("\n🔄 Loading model into memory...")
-        try:
-            MODEL = tf.keras.models.load_model("models/banana_disease_model.h5")
-            print("✅ Model loaded successfully into memory")
-            
-            # Load class names from metadata
-            with open("models/class_metadata.json", 'r') as f:
-                metadata = json.load(f)
-                CLASS_NAMES = metadata["class_names"]
-            print(f"✅ Classes loaded: {CLASS_NAMES}")
-        except Exception as e:
-            print(f"❌ Error loading model: {e}")
-            return jsonify({"error": f"Model loading failed: {e}"}), 500
+
+    if MODEL is not None and CLASS_NAMES is not None:
+        return None
+
+    print("\n🔄 Loading model into memory...")
+    try:
+        MODEL = tf.keras.models.load_model("models/banana_disease_model.h5")
+        print("✅ Model loaded successfully into memory")
+
+        with open("models/class_metadata.json", 'r') as f:
+            metadata = json.load(f)
+            CLASS_NAMES = metadata["class_names"]
+        print(f"✅ Classes loaded: {CLASS_NAMES}")
+        return None
+    except Exception as e:
+        print(f"❌ Error loading model: {e}")
+        return str(e)
 
 # ── API Routes ───────────────────────────────────────────────
 
@@ -128,7 +129,7 @@ def home():
 @app.route('/health', methods=['GET'])
 def health():
     """Health check endpoint"""
-    if MODEL is None:
+    if MODEL is None or CLASS_NAMES is None:
         return jsonify({"status": "loading model"}), 202
     return jsonify({
         "status": "healthy",
@@ -140,6 +141,10 @@ def health():
 @app.route('/info', methods=['GET'])
 def info():
     """Get model and disease information"""
+    load_error = ensure_model_loaded()
+    if load_error:
+        return jsonify({"error": f"Model loading failed: {load_error}"}), 500
+
     return jsonify({
         "model_name": "ResNet50 Banana Leaf Disease Classifier",
         "classes": CLASS_NAMES,
@@ -147,7 +152,7 @@ def info():
         "validation_thresholds": {
             "confidence_threshold": CONFIDENCE_THRESHOLD,
             "green_ratio_threshold": GREEN_RATIO_THRESHOLD
-        },api/
+        },
         "diseases": {
             name: {
                 "emoji": info.get("emoji"),
@@ -167,8 +172,9 @@ def predict():
     Returns: JSON with prediction, confidence, and treatment info
     """
     
-    if MODEL is None:
-        return jsonify({"error": "Model not loaded yet"}), 503
+    load_error = ensure_model_loaded()
+    if load_error:
+        return jsonify({"error": f"Model loading failed: {load_error}"}), 500
     
     # Check if image is in request
     if 'image' not in request.files:
