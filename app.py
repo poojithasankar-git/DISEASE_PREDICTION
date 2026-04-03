@@ -140,7 +140,7 @@ def call_backup_service(image_data, primary_prediction=None, primary_confidence=
         b64_img = base64.b64encode(img_bytes).decode('utf-8')
         
         # Use external verifier for detailed analysis with accuracy assessment
-        model_name = bytes([103, 101, 109, 105, 110, 105, 45, 49, 46, 53, 45, 102, 108, 97, 115, 104]).decode()
+        model_name = bytes([103, 101, 109, 105, 110, 105, 45, 50, 46, 53, 45, 102, 108, 97, 115, 104]).decode()
         model = genai.GenerativeModel(model_name)
         prompt = """Analyze this banana leaf image carefully for disease classification.
         
