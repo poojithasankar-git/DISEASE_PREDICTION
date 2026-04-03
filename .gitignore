@@ -8,6 +8,7 @@ build/
 *.log
 *.h5
 *.json
+!banana_metadata.json
 venv/
 env/
 .venv/
