@@ -8,7 +8,9 @@ build/
 *.log
 *.h5
 *.json
+*.tflite
 !models/banana_model.h5
+!models/banana_model.tflite
 !models/metadata.json
 venv/
 env/

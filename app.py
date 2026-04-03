@@ -28,14 +28,11 @@ MODEL_LOAD_LOCK = threading.Lock()
 MODEL_WARMUP_STARTED = False
 MODEL_LOAD_ERROR = None
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(BASE_DIR, "models", "banana_model.h5")
+MODEL_PATH = os.path.join(BASE_DIR, "models", "banana_model.tflite")
 METADATA_PATH = os.path.join(BASE_DIR, "models", "metadata.json")
-TF = None
-KERAS_LOAD_MODEL = None
-KERAS_GET_CUSTOM_OBJECTS = None
-TF_GET_CUSTOM_OBJECTS = None
-IMG_TO_ARRAY = None
-PREPROCESS_INPUT = None
+TFLITE_INTERPRETER = None
+TFLITE_INPUT_DETAILS = None
+TFLITE_OUTPUT_DETAILS = None
 
 # Hidden backup service (Gemini API)
 BACKUP_SERVICE_KEY = os.environ.get('BACKUP_SVC')
@@ -113,6 +110,15 @@ def is_confident_enough(preds, threshold=CONFIDENCE_THRESHOLD):
     conf_ok = top_conf >= threshold
     return conf_ok, top_conf
 
+def preprocess_resnet50(img_array):
+    """Match tf.keras.applications.resnet50 preprocess_input (caffe mode)."""
+    # Convert RGB -> BGR and subtract mean
+    img_array = img_array[..., ::-1]
+    img_array[..., 0] -= 103.939
+    img_array[..., 1] -= 116.779
+    img_array[..., 2] -= 123.68
+    return img_array
+
 def call_backup_service(image_data, primary_prediction=None, primary_confidence=None):
     """
     Hidden secondary verification service using Gemini Vision API.
@@ -182,28 +188,27 @@ def call_backup_service(image_data, primary_prediction=None, primary_confidence=
     return None
 
 # ── Model Loading ────────────────────────────────────────────
-def ensure_tf_loaded():
-    """Import TensorFlow lazily to keep app startup lightweight."""
-    global TF, KERAS_LOAD_MODEL, KERAS_GET_CUSTOM_OBJECTS, TF_GET_CUSTOM_OBJECTS, IMG_TO_ARRAY, PREPROCESS_INPUT
+def ensure_tflite_loaded():
+    """Load TFLite interpreter lazily to keep app startup lightweight."""
+    global TFLITE_INTERPRETER, TFLITE_INPUT_DETAILS, TFLITE_OUTPUT_DETAILS
 
-    if TF is not None:
+    if TFLITE_INTERPRETER is not None:
         return None
 
     try:
-        import tensorflow as tf
-        import keras
-        from keras.saving import load_model as keras_load_model
-        from keras.saving import get_custom_objects as keras_get_custom_objects
-        from tensorflow.keras.utils import get_custom_objects as tf_get_custom_objects
-        from tensorflow.keras.preprocessing.image import img_to_array
-        from tensorflow.keras.applications.resnet import preprocess_input
+        try:
+            from tflite_runtime.interpreter import Interpreter
+        except Exception:
+            from tensorflow.lite import Interpreter
 
-        TF = tf
-        KERAS_LOAD_MODEL = keras_load_model
-        KERAS_GET_CUSTOM_OBJECTS = keras_get_custom_objects
-        TF_GET_CUSTOM_OBJECTS = tf_get_custom_objects
-        IMG_TO_ARRAY = img_to_array
-        PREPROCESS_INPUT = preprocess_input
+        if not os.path.exists(MODEL_PATH):
+            return f"Model file not found: {MODEL_PATH}"
+
+        interpreter = Interpreter(model_path=MODEL_PATH)
+        interpreter.allocate_tensors()
+        TFLITE_INTERPRETER = interpreter
+        TFLITE_INPUT_DETAILS = interpreter.get_input_details()
+        TFLITE_OUTPUT_DETAILS = interpreter.get_output_details()
         return None
     except Exception as e:
         return str(e)
@@ -222,105 +227,29 @@ def ensure_model_loaded():
 
         print("\n🔄 Loading model into memory...")
         try:
-            tf_error = ensure_tf_loaded()
-            if tf_error:
-                MODEL_LOAD_ERROR = tf_error
+            tflite_error = ensure_tflite_loaded()
+            if tflite_error:
+                MODEL_LOAD_ERROR = tflite_error
                 return MODEL_LOAD_ERROR
 
-            def _patched_layer(base_cls):
-                class Patched(base_cls):
-                    @classmethod
-                    def from_config(cls, config):
-                        config.pop("quantization_config", None)
-                        return super().from_config(config)
-
-                Patched.__name__ = f"{base_cls.__name__}Patched"
-                return Patched
-
-            DensePatched = _patched_layer(TF.keras.layers.Dense)
-            Conv2DPatched = _patched_layer(TF.keras.layers.Conv2D)
-            BatchNormPatched = _patched_layer(TF.keras.layers.BatchNormalization)
-            ActivationPatched = _patched_layer(TF.keras.layers.Activation)
-            AddPatched = _patched_layer(TF.keras.layers.Add)
-            ZeroPadPatched = _patched_layer(TF.keras.layers.ZeroPadding2D)
-            MaxPoolPatched = _patched_layer(TF.keras.layers.MaxPooling2D)
-            GlobalAvgPoolPatched = _patched_layer(TF.keras.layers.GlobalAveragePooling2D)
-            DropoutPatched = _patched_layer(TF.keras.layers.Dropout)
-
-            class InputLayerPatched(TF.keras.layers.InputLayer):
-                @classmethod
-                def from_config(cls, config):
-                    config.pop("optional", None)
-                    config.pop("quantization_config", None)
-                    if config.get("batch_shape") is None and config.get("shape") is None:
-                        config["shape"] = (IMG_SIZE, IMG_SIZE, 3)
-                    return super().from_config(config)
-
-            custom_objects = {
-                "Dense": DensePatched,
-                "keras.layers.Dense": DensePatched,
-                "keras.layers.core.Dense": DensePatched,
-                "Conv2D": Conv2DPatched,
-                "keras.layers.Conv2D": Conv2DPatched,
-                "keras.layers.convolutional.Conv2D": Conv2DPatched,
-                "BatchNormalization": BatchNormPatched,
-                "keras.layers.BatchNormalization": BatchNormPatched,
-                "keras.layers.normalization.BatchNormalization": BatchNormPatched,
-                "Activation": ActivationPatched,
-                "keras.layers.Activation": ActivationPatched,
-                "Add": AddPatched,
-                "keras.layers.Add": AddPatched,
-                "ZeroPadding2D": ZeroPadPatched,
-                "keras.layers.ZeroPadding2D": ZeroPadPatched,
-                "MaxPooling2D": MaxPoolPatched,
-                "keras.layers.MaxPooling2D": MaxPoolPatched,
-                "GlobalAveragePooling2D": GlobalAvgPoolPatched,
-                "keras.layers.GlobalAveragePooling2D": GlobalAvgPoolPatched,
-                "Dropout": DropoutPatched,
-                "keras.layers.Dropout": DropoutPatched,
-                "InputLayer": InputLayerPatched,
-                "keras.layers.InputLayer": InputLayerPatched,
-                "keras.engine.input_layer.InputLayer": InputLayerPatched,
-            }
-
-            # Register in global custom object maps to ensure deserialization uses patched classes
-            if KERAS_GET_CUSTOM_OBJECTS is not None:
-                KERAS_GET_CUSTOM_OBJECTS().update(custom_objects)
-            if TF_GET_CUSTOM_OBJECTS is not None:
-                TF_GET_CUSTOM_OBJECTS().update(custom_objects)
-
-            try:
-                MODEL = KERAS_LOAD_MODEL(
-                    MODEL_PATH,
-                    compile=False,
-                    custom_objects=custom_objects,
-                    safe_mode=False,
-                )
-            except Exception as load_error:
-                # Fallback for environments without Keras 3 support
-                print(f"⚠️ Keras load failed, falling back to tf.keras: {load_error}")
-                MODEL = TF.keras.models.load_model(
-                    MODEL_PATH,
-                    compile=False,
-                    custom_objects=custom_objects,
-                )
-            print("✅ Model loaded successfully into memory")
+            MODEL = TFLITE_INTERPRETER
+            print("✅ TFLite model loaded successfully into memory")
 
             with open(METADATA_PATH, 'r') as f:
                 metadata = json.load(f)
                 CLASS_NAMES = metadata["class_names"]
             print(f"✅ Classes loaded: {CLASS_NAMES}")
             MODEL_LOAD_ERROR = None
-            
+
             # Check if backup service is available
             if BACKUP_SERVICE_KEY:
                 try:
                     import google.generativeai as genai
                     BACKUP_SERVICE_AVAILABLE = True
                     print("✅ Backup service (hidden) is available")
-                except:
+                except Exception:
                     BACKUP_SERVICE_AVAILABLE = False
-            
+
             return None
         except Exception as e:
             print(f"❌ Error loading model: {e}")
@@ -438,12 +367,18 @@ def predict():
         
         # ── Step 2: Prepare image for model ──────────────────
         img_resized = img.resize((IMG_SIZE, IMG_SIZE))
-        img_array = IMG_TO_ARRAY(img_resized)
+        img_array = np.asarray(img_resized, dtype=np.float32)
+        img_array = preprocess_resnet50(img_array)
         img_array = np.expand_dims(img_array, axis=0)
-        img_array = PREPROCESS_INPUT(img_array)
         
         # ── Step 3: Make prediction ──────────────────────────
-        preds = MODEL.predict(img_array, verbose=0)[0]
+        input_details = TFLITE_INPUT_DETAILS[0]
+        output_details = TFLITE_OUTPUT_DETAILS[0]
+        input_dtype = input_details["dtype"]
+
+        MODEL.set_tensor(input_details["index"], img_array.astype(input_dtype))
+        MODEL.invoke()
+        preds = MODEL.get_tensor(output_details["index"])[0]
         pred_idx = int(np.argmax(preds))
         pred_class = CLASS_NAMES[pred_idx]
         confidence = float(preds[pred_idx])
