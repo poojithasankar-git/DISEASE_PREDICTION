@@ -220,12 +220,39 @@ def ensure_model_loaded():
                 MODEL_LOAD_ERROR = tf_error
                 return MODEL_LOAD_ERROR
 
+            class DensePatched(TF.keras.layers.Dense):
+                @classmethod
+                def from_config(cls, config):
+                    config.pop("quantization_config", None)
+                    return super().from_config(config)
+
+            class InputLayerPatched(TF.keras.layers.InputLayer):
+                @classmethod
+                def from_config(cls, config):
+                    config.pop("batch_shape", None)
+                    config.pop("optional", None)
+                    return super().from_config(config)
+
+            custom_objects = {
+                "Dense": DensePatched,
+                "InputLayer": InputLayerPatched,
+            }
+
             try:
-                MODEL = KERAS_LOAD_MODEL(MODEL_PATH, compile=False)
+                MODEL = KERAS_LOAD_MODEL(
+                    MODEL_PATH,
+                    compile=False,
+                    custom_objects=custom_objects,
+                    safe_mode=False,
+                )
             except Exception as load_error:
                 # Fallback for environments without Keras 3 support
                 print(f"⚠️ Keras load failed, falling back to tf.keras: {load_error}")
-                MODEL = TF.keras.models.load_model(MODEL_PATH, compile=False)
+                MODEL = TF.keras.models.load_model(
+                    MODEL_PATH,
+                    compile=False,
+                    custom_objects=custom_objects,
+                )
             print("✅ Model loaded successfully into memory")
 
             with open(METADATA_PATH, 'r') as f:
