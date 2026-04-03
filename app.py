@@ -214,10 +214,15 @@ def ensure_backup_service_available():
     try:
         importlib.import_module(".".join(["google", "generativeai"]))
         BACKUP_SERVICE_AVAILABLE = True
-    except Exception:
+        return True
+    except ImportError as e:
+        print(f"⚠️ google.generativeai import failed: {e}")
         BACKUP_SERVICE_AVAILABLE = False
-
-    return BACKUP_SERVICE_AVAILABLE
+        return False
+    except Exception as e:
+        print(f"⚠️ Unexpected error checking backup service: {e}")
+        BACKUP_SERVICE_AVAILABLE = False
+        return False
 
 # ── Model Loading ────────────────────────────────────────────
 def ensure_tflite_loaded():

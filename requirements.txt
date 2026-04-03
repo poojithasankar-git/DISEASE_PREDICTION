@@ -2,5 +2,5 @@ flask==3.0.0
 numpy==1.24.3
 pillow==10.0.0
 gunicorn==21.2.0
-google-generativeai==0.3.0
+google-generativeai==0.7.2
 tflite-runtime==2.14.0
