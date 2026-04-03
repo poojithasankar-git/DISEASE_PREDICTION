@@ -11,13 +11,16 @@ import threading
 import importlib
 import numpy as np
 import colorsys
-import base64
 from flask import Flask, request, jsonify, render_template
 from PIL import Image, UnidentifiedImageError
 
+# Resolve project paths once so .env loading is stable regardless of working directory
+PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
+DOTENV_PATH = os.path.join(PROJECT_DIR, ".env")
+
 # Load environment variables from .env file
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv(dotenv_path=DOTENV_PATH, override=True)
 
 # ── Initialize Flask App ─────────────────────────────────────
 app = Flask(__name__, template_folder='templates', static_folder='static', static_url_path='/static')
@@ -32,7 +35,7 @@ GREEN_RATIO_THRESHOLD = 0.10
 MODEL_LOAD_LOCK = threading.Lock()
 MODEL_WARMUP_STARTED = False
 MODEL_LOAD_ERROR = None
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = PROJECT_DIR
 MODEL_PATH = os.path.join(BASE_DIR, "models", "banana_model.tflite")
 METADATA_PATH = os.path.join(BASE_DIR, "models", "metadata.json")
 TFLITE_INTERPRETER = None
@@ -41,7 +44,62 @@ TFLITE_OUTPUT_DETAILS = None
 
 # Hidden external verification service
 BACKUP_SERVICE_KEY = os.environ.get('BACKUP_SVC')
-BACKUP_SERVICE_AVAILABLE = False
+BACKUP_SERVICE_KEY_MTIME = None
+GEMINI_MODULE = None
+GEMINI_MODEL = None
+GEMINI_MODEL_NAME = bytes([103, 101, 109, 105, 110, 105, 45, 50, 46, 53, 45, 102, 108, 97, 115, 104]).decode()
+GEMINI_CONFIGURED_KEY = None
+
+
+def get_backup_service_key():
+    """Return latest API key from .env / environment for each request."""
+    global BACKUP_SERVICE_KEY, BACKUP_SERVICE_KEY_MTIME
+
+    # Avoid reloading .env on every request unless file changed
+    current_mtime = None
+    if os.path.exists(DOTENV_PATH):
+        try:
+            current_mtime = os.path.getmtime(DOTENV_PATH)
+        except OSError:
+            current_mtime = None
+
+    if current_mtime != BACKUP_SERVICE_KEY_MTIME:
+        load_dotenv(dotenv_path=DOTENV_PATH, override=True)
+        BACKUP_SERVICE_KEY = os.environ.get('BACKUP_SVC')
+        BACKUP_SERVICE_KEY_MTIME = current_mtime
+
+    if BACKUP_SERVICE_KEY is None:
+        BACKUP_SERVICE_KEY = os.environ.get('BACKUP_SVC')
+
+    return BACKUP_SERVICE_KEY
+
+
+def get_gemini_model(api_key):
+    """Reuse Gemini module/model between requests to reduce overhead."""
+    global GEMINI_MODULE, GEMINI_MODEL, GEMINI_CONFIGURED_KEY
+
+    if GEMINI_MODULE is None:
+        GEMINI_MODULE = importlib.import_module(".".join(["google", "generativeai"]))
+
+    if GEMINI_CONFIGURED_KEY != api_key:
+        GEMINI_MODULE.configure(api_key=api_key)
+        GEMINI_MODEL = None
+        GEMINI_CONFIGURED_KEY = api_key
+
+    if GEMINI_MODEL is None:
+        GEMINI_MODEL = GEMINI_MODULE.GenerativeModel(GEMINI_MODEL_NAME)
+
+    return GEMINI_MODEL
+
+
+def prepare_image_for_gemini(image_data):
+    """Resize/compress image to reduce upload and model latency."""
+    optimized = image_data.copy()
+    optimized.thumbnail((896, 896), Image.Resampling.LANCZOS)
+
+    img_byte_arr = io.BytesIO()
+    optimized.save(img_byte_arr, format='JPEG', quality=85, optimize=True)
+    return img_byte_arr.getvalue()
 
 DISEASE_INFO = {
     "healthy": {
@@ -130,22 +188,15 @@ def call_backup_service(image_data, primary_prediction=None, primary_confidence=
     Checks accuracy and confidence for every image analysis.
     Returns: dict with disease, confidence, accuracy_score, match_status
     """
-    if not BACKUP_SERVICE_KEY:
+    api_key = get_backup_service_key()
+    if not api_key:
         return None
     
     try:
-        genai = importlib.import_module(".".join(["google", "generativeai"]))
-        genai.configure(api_key=BACKUP_SERVICE_KEY)
-        
-        # Convert PIL image to bytes
-        img_byte_arr = io.BytesIO()
-        image_data.save(img_byte_arr, format='PNG')
-        img_bytes = img_byte_arr.getvalue()
-        b64_img = base64.b64encode(img_bytes).decode('utf-8')
-        
-        # Use external verifier for detailed analysis with accuracy assessment
-        model_name = bytes([103, 101, 109, 105, 110, 105, 45, 50, 46, 53, 45, 102, 108, 97, 115, 104]).decode()
-        model = genai.GenerativeModel(model_name)
+        # Reuse configured model and send optimized image bytes
+        model = get_gemini_model(api_key)
+        image_bytes = prepare_image_for_gemini(image_data)
+
         prompt = """Analyze this banana leaf image carefully for disease classification.
         
         Classify as one of: 'healthy', 'cordana', 'pestalotiopsis', 'sigatoka'
@@ -161,8 +212,8 @@ def call_backup_service(image_data, primary_prediction=None, primary_confidence=
         
         response = model.generate_content([
             {
-                "mime_type": "image/png",
-                "data": b64_img
+                "mime_type": "image/jpeg",
+                "data": image_bytes
             },
             prompt
         ])
@@ -206,24 +257,17 @@ def call_backup_service(image_data, primary_prediction=None, primary_confidence=
 
 def ensure_backup_service_available():
     """Check if external verifier can be used without forcing local model load."""
-    global BACKUP_SERVICE_AVAILABLE
-
-    if not BACKUP_SERVICE_KEY:
-        BACKUP_SERVICE_AVAILABLE = False
+    api_key = get_backup_service_key()
+    if not api_key:
         return False
-
-    if BACKUP_SERVICE_AVAILABLE:
-        return True
 
     try:
+        # Always try to import fresh
         importlib.import_module(".".join(["google", "generativeai"]))
-        BACKUP_SERVICE_AVAILABLE = True
         return True
     except ImportError:
-        BACKUP_SERVICE_AVAILABLE = False
         return False
     except Exception:
-        BACKUP_SERVICE_AVAILABLE = False
         return False
 
 # ── Model Loading ────────────────────────────────────────────
@@ -255,7 +299,7 @@ def ensure_tflite_loaded():
 
 def ensure_model_loaded():
     """Load model into memory once; returns error text on failure."""
-    global MODEL, CLASS_NAMES, MODEL_LOAD_ERROR, BACKUP_SERVICE_AVAILABLE
+    global MODEL, CLASS_NAMES, MODEL_LOAD_ERROR
 
     if MODEL is not None and CLASS_NAMES is not None:
         return None
@@ -400,13 +444,13 @@ def predict():
             return jsonify({
                 "status": "rejected",
                 "reason": "NOT_A_LEAF",
-                "message": "❌ This doesn't look like a banana leaf. Please upload a clear image of a banana leaf and try again.",
-                "hint": "Make sure the image shows a banana leaf clearly",
+                "message": "Invalid photo. Upload an image of a banana leaf.",
+                "hint": "Use a clear photo of a single banana leaf.",
                 "green_ratio": float(green_ratio),
                 "required_ratio": GREEN_RATIO_THRESHOLD
             }), 400
 
-        # ── Step 2: Primary external verification ───────────
+        # ── Step 2: Primary external verification (Gemini) ─
         if ensure_backup_service_available():
             external_result = call_backup_service(img)
             if external_result:
@@ -442,6 +486,20 @@ def predict():
                             "recommended_solutions": disease_info.get("solutions", [])
                         }
                     }), 200
+
+            return jsonify({
+                "status": "error",
+                "error": "Gemini analysis failed for this image.",
+                "hint": "Try a clearer banana leaf photo (front view, good lighting)."
+            }), 502
+
+        # Gemini unavailable and no local model -> clear setup error
+        if not get_backup_service_key() and not os.path.exists(MODEL_PATH):
+            return jsonify({
+                "status": "error",
+                "error": "Gemini API key not configured.",
+                "hint": "Set BACKUP_SVC in .env to enable disease prediction."
+            }), 503
 
         # ── Step 3: Fallback to local model ─────────────────
         if not os.path.exists(MODEL_PATH):
@@ -520,12 +578,12 @@ def predict():
         
     except UnidentifiedImageError:
         return jsonify({
-            "error": "Invalid image file. Please upload a JPG or PNG banana leaf image.",
+            "error": "Invalid photo. Upload an image of a banana leaf.",
             "status": "error"
         }), 400
     except OSError:
         return jsonify({
-            "error": "Unable to read image data. Please try another file.",
+            "error": "Invalid photo. Upload an image of a banana leaf.",
             "status": "error"
         }), 400
     except Exception as e:

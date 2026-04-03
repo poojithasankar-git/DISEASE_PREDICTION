@@ -10,6 +10,14 @@ const successResult = document.getElementById('successResult');
 const rejectedResult = document.getElementById('rejectedResult');
 const errorResult = document.getElementById('errorResult');
 const tryAgainBtn = document.getElementById('tryAgainBtn');
+const openCameraBtn = document.getElementById('openCameraBtn');
+const cameraContainer = document.getElementById('cameraContainer');
+const cameraVideo = document.getElementById('cameraVideo');
+const cameraCanvas = document.getElementById('cameraCanvas');
+const capturePhotoBtn = document.getElementById('capturePhotoBtn');
+const closeCameraBtn = document.getElementById('closeCameraBtn');
+
+let cameraStream = null;
 
 // File Handling
 uploadArea.addEventListener('click', () => imageInput.click());
@@ -60,6 +68,75 @@ function handleImageSelect(file) {
 
 changeImageBtn.addEventListener('click', () => {
     imageInput.click();
+});
+
+async function startCamera() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        displayErrorResult('Camera not supported on this device/browser.');
+        return;
+    }
+
+    try {
+        cameraStream = await navigator.mediaDevices.getUserMedia({
+            video: {
+                facingMode: { ideal: 'environment' }
+            },
+            audio: false
+        });
+
+        cameraVideo.srcObject = cameraStream;
+        cameraContainer.classList.remove('hidden');
+        previewContainer.classList.add('hidden');
+        uploadArea.style.display = 'none';
+        resultsSection.classList.add('hidden');
+    } catch (error) {
+        displayErrorResult('Could not access camera. Please allow camera permission or upload from gallery.');
+    }
+}
+
+function stopCamera() {
+    if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+        cameraStream = null;
+    }
+    cameraVideo.srcObject = null;
+    cameraContainer.classList.add('hidden');
+}
+
+function capturePhotoFromCamera() {
+    if (!cameraVideo.videoWidth || !cameraVideo.videoHeight) {
+        displayErrorResult('Camera is not ready yet. Please try again.');
+        return;
+    }
+
+    cameraCanvas.width = cameraVideo.videoWidth;
+    cameraCanvas.height = cameraVideo.videoHeight;
+
+    const ctx = cameraCanvas.getContext('2d');
+    ctx.drawImage(cameraVideo, 0, 0, cameraCanvas.width, cameraCanvas.height);
+
+    cameraCanvas.toBlob((blob) => {
+        if (!blob) {
+            displayErrorResult('Failed to capture image from camera.');
+            return;
+        }
+
+        const capturedFile = new File([blob], `camera-capture-${Date.now()}.jpg`, { type: 'image/jpeg' });
+        stopCamera();
+        handleImageSelect(capturedFile);
+    }, 'image/jpeg', 0.9);
+}
+
+openCameraBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    startCamera();
+});
+
+capturePhotoBtn.addEventListener('click', capturePhotoFromCamera);
+
+closeCameraBtn.addEventListener('click', () => {
+    stopCamera();
+    uploadArea.style.display = 'block';
 });
 
 async function uploadImage(file) {
@@ -193,6 +270,7 @@ function displayErrorResult(message) {
 
 tryAgainBtn.addEventListener('click', () => {
     // Reset UI
+    stopCamera();
     uploadArea.style.display = 'block';
     previewContainer.classList.add('hidden');
     resultsSection.classList.add('hidden');

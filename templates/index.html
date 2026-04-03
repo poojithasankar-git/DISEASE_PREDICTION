@@ -29,7 +29,19 @@
                         </svg>
                         <h2>Upload Banana Leaf Image</h2>
                         <p>Drag and drop or click to select</p>
-                        <input type="file" id="imageInput" accept="image/*" hidden>
+                        <input type="file" id="imageInput" accept="image/*" capture="environment" hidden>
+                        <div class="upload-actions">
+                            <button id="openCameraBtn" type="button" class="btn-secondary">Use Camera</button>
+                        </div>
+                    </div>
+
+                    <div id="cameraContainer" class="camera-container hidden">
+                        <video id="cameraVideo" class="camera-video" autoplay playsinline></video>
+                        <canvas id="cameraCanvas" class="hidden"></canvas>
+                        <div class="camera-actions">
+                            <button id="capturePhotoBtn" type="button" class="btn-primary">Capture Photo</button>
+                            <button id="closeCameraBtn" type="button" class="btn-secondary">Close Camera</button>
+                        </div>
                     </div>
                 </div>
 
