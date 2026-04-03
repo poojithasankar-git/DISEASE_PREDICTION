@@ -4,7 +4,7 @@ QUICKSTART - BANANA LEAF DISEASE CLASSIFIER
 1) Deploy on Render
 - Build Command: pip install -r requirements.txt
 - Start Command: gunicorn --workers 1 --timeout 120 --bind 0.0.0.0:$PORT app:app
-- Optional env var: BACKUP_SVC (Gemini API key)
+- Optional env var: BACKUP_SVC (external verifier API key)
 
 2) Open the app
 - https://your-service-name.onrender.com

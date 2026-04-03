@@ -29,4 +29,4 @@ DOCS
 NOTES
 - No training script included
 - No Kaggle credentials required
-- Optional Gemini fallback via BACKUP_SVC
+- Optional external fallback via BACKUP_SVC

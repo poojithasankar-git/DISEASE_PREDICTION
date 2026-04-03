@@ -6,7 +6,7 @@ This is a pre-trained, inference-only deployment. No training runs on Render.
 
 - Model: models/banana_model.h5
 - Metadata: models/metadata.json
-- Optional fallback: Gemini API via BACKUP_SVC
+- Optional fallback: external verifier via BACKUP_SVC
 
 ## Quick Deployment (Render)
 
@@ -16,7 +16,7 @@ This is a pre-trained, inference-only deployment. No training runs on Render.
 3. Set Start Command:
    gunicorn --workers 1 --timeout 120 --bind 0.0.0.0:$PORT app:app
 4. (Optional) Add env var:
-   BACKUP_SVC = your Gemini API key
+   BACKUP_SVC = your external verifier API key
 5. Deploy.
 
 ## Local Run

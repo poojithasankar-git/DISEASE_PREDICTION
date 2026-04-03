@@ -65,7 +65,7 @@ echo    pip install -r requirements.txt
 echo 6. Set Start Command:
 echo    gunicorn --workers 1 --timeout 120 --bind 0.0.0.0:$PORT app:app
 echo 7. Add Environment Variables:
-echo    - BACKUP_SVC = Gemini API key (optional, for fallback classification)
+echo    - BACKUP_SVC = external verifier API key (optional, for fallback classification)
 echo 8. Click Deploy
 echo.
 echo 🎉 Your app will be available at:

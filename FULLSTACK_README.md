@@ -21,7 +21,7 @@ gunicorn --workers 1 --timeout 120 --bind 0.0.0.0:$PORT app:app
 
 Optional env var:
 
-BACKUP_SVC = Gemini API key
+BACKUP_SVC = external verifier API key
 
 ## Project Structure
 
