@@ -289,36 +289,53 @@ def trigger_model_warmup():
 @app.route('/', methods=['GET'])
 def home():
     """Serve the web interface"""
-    trigger_model_warmup()
     return render_template('index.html')
 
 @app.route('/health', methods=['GET'])
 def health():
     """Health check endpoint"""
-    if MODEL is None or CLASS_NAMES is None:
-        trigger_model_warmup()
-        if MODEL_LOAD_ERROR:
-            return jsonify({"status": "error", "error": MODEL_LOAD_ERROR}), 500
-        return jsonify({"status": "loading model"}), 202
+    fallback_model_present = os.path.exists(MODEL_PATH)
+    external_available = ensure_backup_service_available()
+
+    if external_available or (MODEL is not None and CLASS_NAMES is not None) or fallback_model_present:
+        return jsonify({
+            "status": "healthy",
+            "external_available": external_available,
+            "fallback_model_present": fallback_model_present,
+            "model_loaded": MODEL is not None and CLASS_NAMES is not None,
+            "classes_available": len(CLASS_NAMES) if CLASS_NAMES else 0,
+            "classes": CLASS_NAMES if CLASS_NAMES else []
+        })
+
     return jsonify({
-        "status": "healthy",
-        "model_loaded": True,
-        "classes_available": len(CLASS_NAMES),
-        "classes": CLASS_NAMES
-    })
+        "status": "error",
+        "error": "No prediction backend available"
+    }), 500
 
 @app.route('/info', methods=['GET'])
 def info():
     """Get model and disease information"""
-    if MODEL is None or CLASS_NAMES is None:
-        trigger_model_warmup()
-        if MODEL_LOAD_ERROR:
-            return jsonify({"error": f"Model loading failed: {MODEL_LOAD_ERROR}"}), 500
-        return jsonify({"status": "loading", "message": "Model is warming up. Try again shortly."}), 202
+    fallback_model_present = os.path.exists(MODEL_PATH)
+    external_available = ensure_backup_service_available()
+
+    if CLASS_NAMES is None:
+        if fallback_model_present:
+            try:
+                with open(METADATA_PATH, 'r') as f:
+                    metadata = json.load(f)
+                    classes = metadata.get("class_names", [])
+            except Exception:
+                classes = list(DISEASE_INFO.keys())
+        else:
+            classes = list(DISEASE_INFO.keys())
+    else:
+        classes = CLASS_NAMES
 
     return jsonify({
         "model_name": "ResNet50 Banana Leaf Disease Classifier",
-        "classes": CLASS_NAMES,
+        "classes": classes,
+        "external_available": external_available,
+        "fallback_model_present": fallback_model_present,
         "expected_input": "Image file (JPG, PNG) of banana leaf",
         "validation_thresholds": {
             "confidence_threshold": CONFIDENCE_THRESHOLD,
@@ -410,9 +427,20 @@ def predict():
                     }), 200
 
         # ── Step 3: Fallback to local model ─────────────────
+        if not os.path.exists(MODEL_PATH):
+            return jsonify({
+                "status": "error",
+                "error": "Primary verification is unavailable and local fallback model is not configured.",
+                "hint": "Set BACKUP_SVC or provide models/banana_model.tflite"
+            }), 503
+
         load_error = ensure_model_loaded()
         if load_error:
-            return jsonify({"error": f"Model loading failed: {load_error}"}), 500
+            return jsonify({
+                "status": "error",
+                "error": "Local fallback is unavailable.",
+                "details": str(load_error)
+            }), 503
         
         # ── Step 4: Prepare image for local model ───────────
         img_resized = img.resize((IMG_SIZE, IMG_SIZE))
