@@ -227,16 +227,31 @@ def ensure_model_loaded():
                 MODEL_LOAD_ERROR = tf_error
                 return MODEL_LOAD_ERROR
 
-            class DensePatched(TF.keras.layers.Dense):
-                @classmethod
-                def from_config(cls, config):
-                    config.pop("quantization_config", None)
-                    return super().from_config(config)
+            def _patched_layer(base_cls):
+                class Patched(base_cls):
+                    @classmethod
+                    def from_config(cls, config):
+                        config.pop("quantization_config", None)
+                        return super().from_config(config)
+
+                Patched.__name__ = f"{base_cls.__name__}Patched"
+                return Patched
+
+            DensePatched = _patched_layer(TF.keras.layers.Dense)
+            Conv2DPatched = _patched_layer(TF.keras.layers.Conv2D)
+            BatchNormPatched = _patched_layer(TF.keras.layers.BatchNormalization)
+            ActivationPatched = _patched_layer(TF.keras.layers.Activation)
+            AddPatched = _patched_layer(TF.keras.layers.Add)
+            ZeroPadPatched = _patched_layer(TF.keras.layers.ZeroPadding2D)
+            MaxPoolPatched = _patched_layer(TF.keras.layers.MaxPooling2D)
+            GlobalAvgPoolPatched = _patched_layer(TF.keras.layers.GlobalAveragePooling2D)
+            DropoutPatched = _patched_layer(TF.keras.layers.Dropout)
 
             class InputLayerPatched(TF.keras.layers.InputLayer):
                 @classmethod
                 def from_config(cls, config):
                     config.pop("optional", None)
+                    config.pop("quantization_config", None)
                     if config.get("batch_shape") is None and config.get("shape") is None:
                         config["shape"] = (IMG_SIZE, IMG_SIZE, 3)
                     return super().from_config(config)
@@ -245,6 +260,24 @@ def ensure_model_loaded():
                 "Dense": DensePatched,
                 "keras.layers.Dense": DensePatched,
                 "keras.layers.core.Dense": DensePatched,
+                "Conv2D": Conv2DPatched,
+                "keras.layers.Conv2D": Conv2DPatched,
+                "keras.layers.convolutional.Conv2D": Conv2DPatched,
+                "BatchNormalization": BatchNormPatched,
+                "keras.layers.BatchNormalization": BatchNormPatched,
+                "keras.layers.normalization.BatchNormalization": BatchNormPatched,
+                "Activation": ActivationPatched,
+                "keras.layers.Activation": ActivationPatched,
+                "Add": AddPatched,
+                "keras.layers.Add": AddPatched,
+                "ZeroPadding2D": ZeroPadPatched,
+                "keras.layers.ZeroPadding2D": ZeroPadPatched,
+                "MaxPooling2D": MaxPoolPatched,
+                "keras.layers.MaxPooling2D": MaxPoolPatched,
+                "GlobalAveragePooling2D": GlobalAvgPoolPatched,
+                "keras.layers.GlobalAveragePooling2D": GlobalAvgPoolPatched,
+                "Dropout": DropoutPatched,
+                "keras.layers.Dropout": DropoutPatched,
                 "InputLayer": InputLayerPatched,
                 "keras.layers.InputLayer": InputLayerPatched,
                 "keras.engine.input_layer.InputLayer": InputLayerPatched,
