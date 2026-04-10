@@ -32,6 +32,7 @@ CLASS_NAMES = None
 IMG_SIZE = 224
 CONFIDENCE_THRESHOLD = 0.70
 GREEN_RATIO_THRESHOLD = 0.10
+LEAF_CERTAINTY_THRESHOLD = 0.50
 MODEL_LOAD_LOCK = threading.Lock()
 MODEL_WARMUP_STARTED = False
 MODEL_LOAD_ERROR = None
@@ -45,10 +46,10 @@ TFLITE_OUTPUT_DETAILS = None
 # Hidden external verification service
 BACKUP_SERVICE_KEY = os.environ.get('BACKUP_SVC')
 BACKUP_SERVICE_KEY_MTIME = None
-GEMINI_MODULE = None
-GEMINI_MODEL = None
-GEMINI_MODEL_NAME = bytes([103, 101, 109, 105, 110, 105, 45, 50, 46, 53, 45, 102, 108, 97, 115, 104]).decode()
-GEMINI_CONFIGURED_KEY = None
+LLM_MODULE = None
+LLM_MODEL = None
+LLM_MODEL_NAME = bytes([103, 101, 109, 105, 110, 105, 45, 50, 46, 53, 45, 102, 108, 97, 115, 104]).decode()
+LLM_CONFIGURED_KEY = None
 
 
 def get_backup_service_key():
@@ -74,25 +75,25 @@ def get_backup_service_key():
     return BACKUP_SERVICE_KEY
 
 
-def get_gemini_model(api_key):
-    """Reuse Gemini module/model between requests to reduce overhead."""
-    global GEMINI_MODULE, GEMINI_MODEL, GEMINI_CONFIGURED_KEY
+def get_llm_model(api_key):
+    """Reuse external LLM module/model between requests to reduce overhead."""
+    global LLM_MODULE, LLM_MODEL, LLM_CONFIGURED_KEY
 
-    if GEMINI_MODULE is None:
-        GEMINI_MODULE = importlib.import_module(".".join(["google", "generativeai"]))
+    if LLM_MODULE is None:
+        LLM_MODULE = importlib.import_module(".".join(["google", "generativeai"]))
 
-    if GEMINI_CONFIGURED_KEY != api_key:
-        GEMINI_MODULE.configure(api_key=api_key)
-        GEMINI_MODEL = None
-        GEMINI_CONFIGURED_KEY = api_key
+    if LLM_CONFIGURED_KEY != api_key:
+        LLM_MODULE.configure(api_key=api_key)
+        LLM_MODEL = None
+        LLM_CONFIGURED_KEY = api_key
 
-    if GEMINI_MODEL is None:
-        GEMINI_MODEL = GEMINI_MODULE.GenerativeModel(GEMINI_MODEL_NAME)
+    if LLM_MODEL is None:
+        LLM_MODEL = LLM_MODULE.GenerativeModel(LLM_MODEL_NAME)
 
-    return GEMINI_MODEL
+    return LLM_MODEL
 
 
-def prepare_image_for_gemini(image_data):
+def prepare_image_for_llm(image_data):
     """Resize/compress image to reduce upload and model latency."""
     optimized = image_data.copy()
     optimized.thumbnail((896, 896), Image.Resampling.LANCZOS)
@@ -194,8 +195,8 @@ def call_backup_service(image_data, primary_prediction=None, primary_confidence=
     
     try:
         # Reuse configured model and send optimized image bytes
-        model = get_gemini_model(api_key)
-        image_bytes = prepare_image_for_gemini(image_data)
+        model = get_llm_model(api_key)
+        image_bytes = prepare_image_for_llm(image_data)
 
         prompt = """Analyze this banana leaf image carefully for disease classification.
         
@@ -450,12 +451,27 @@ def predict():
                 "required_ratio": GREEN_RATIO_THRESHOLD
             }), 400
 
-        # ── Step 2: Primary external verification (Gemini) ─
+        # ── Step 2: Primary external verification (LLM) ─
         if ensure_backup_service_available():
             external_result = call_backup_service(img)
             if external_result:
                 ext_class = external_result.get("disease")
                 ext_conf = float(external_result.get("confidence", 0.0))
+                leaf_certainty = float(external_result.get("leaf_certainty", 0.0))
+
+                # Reject non-leaf/uncertain images even if a disease label is returned.
+                if leaf_certainty < LEAF_CERTAINTY_THRESHOLD:
+                    return jsonify({
+                        "status": "rejected",
+                        "reason": "NOT_A_LEAF",
+                        "message": "Invalid photo. Upload an image of a banana leaf.",
+                        "hint": "Use a clear photo of a single banana leaf.",
+                        "validation": {
+                            "green_ratio": float(green_ratio),
+                            "leaf_certainty": leaf_certainty,
+                            "required_leaf_certainty": LEAF_CERTAINTY_THRESHOLD
+                        }
+                    }), 400
 
                 if ext_class in DISEASE_INFO:
                     class_probabilities = {
@@ -489,16 +505,16 @@ def predict():
 
             return jsonify({
                 "status": "error",
-                "error": "Gemini analysis failed for this image.",
-                "hint": "Try a clearer banana leaf photo (front view, good lighting)."
+                "error": "LLM resource not enough.",
+                "hint": "Try again in a few moments with a clear banana leaf photo."
             }), 502
 
-        # Gemini unavailable and no local model -> clear setup error
+        # External LLM unavailable and no local model -> clear setup error
         if not get_backup_service_key() and not os.path.exists(MODEL_PATH):
             return jsonify({
                 "status": "error",
-                "error": "Gemini API key not configured.",
-                "hint": "Set BACKUP_SVC in .env to enable disease prediction."
+                "error": "LLM resource not enough.",
+                "hint": "Service is temporarily unavailable. Please try again later."
             }), 503
 
         # ── Step 3: Fallback to local model ─────────────────

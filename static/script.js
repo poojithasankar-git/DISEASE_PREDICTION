@@ -11,6 +11,7 @@ const rejectedResult = document.getElementById('rejectedResult');
 const errorResult = document.getElementById('errorResult');
 const tryAgainBtn = document.getElementById('tryAgainBtn');
 const openCameraBtn = document.getElementById('openCameraBtn');
+const uploadFileBtn = document.getElementById('uploadFileBtn');
 const cameraContainer = document.getElementById('cameraContainer');
 const cameraVideo = document.getElementById('cameraVideo');
 const cameraCanvas = document.getElementById('cameraCanvas');
@@ -20,26 +21,7 @@ const closeCameraBtn = document.getElementById('closeCameraBtn');
 let cameraStream = null;
 
 // File Handling
-uploadArea.addEventListener('click', () => imageInput.click());
-
-uploadArea.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    uploadArea.classList.add('dragover');
-});
-
-uploadArea.addEventListener('dragleave', () => {
-    uploadArea.classList.remove('dragover');
-});
-
-uploadArea.addEventListener('drop', (e) => {
-    e.preventDefault();
-    uploadArea.classList.remove('dragover');
-    
-    const files = e.dataTransfer.files;
-    if (files.length > 0) {
-        handleImageSelect(files[0]);
-    }
-});
+uploadFileBtn.addEventListener('click', () => imageInput.click());
 
 imageInput.addEventListener('change', (e) => {
     if (e.target.files.length > 0) {

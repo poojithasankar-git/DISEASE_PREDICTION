@@ -23,12 +23,61 @@ body {
     color: var(--text-color);
     line-height: 1.6;
     min-height: 100vh;
+    overflow-x: hidden;
+    -webkit-text-size-adjust: 100%;
+}
+
+img,
+video {
+    max-width: 100%;
 }
 
 .container {
     max-width: 1200px;
     margin: 0 auto;
     padding: 20px;
+}
+
+@media (min-width: 1367px) {
+    .container {
+        max-width: 1240px;
+        padding: 24px;
+    }
+}
+
+@media (min-width: 992px) and (max-width: 1366px) {
+    .container {
+        max-width: 1080px;
+        padding: 16px;
+    }
+
+    .header {
+        margin-bottom: 28px;
+        padding: 30px 18px;
+    }
+
+    .header h1 {
+        font-size: 2.45em;
+    }
+
+    .upload-section {
+        padding: 22px;
+    }
+
+    .upload-box {
+        grid-template-columns: 1.1fr 0.9fr;
+        gap: 22px;
+    }
+
+    .preview-image,
+    .camera-video {
+        max-height: 360px;
+    }
+
+    .info-section {
+        grid-template-columns: repeat(3, minmax(240px, 1fr));
+        gap: 16px;
+    }
 }
 
 /* Header */
@@ -84,10 +133,12 @@ body {
     background: #f0fff4;
 }
 
-.upload-area:hover {
-    border-color: var(--secondary-color);
-    background: #e0f7ff;
-    transform: scale(1.02);
+@media (hover: hover) and (pointer: fine) {
+    .upload-area:hover {
+        border-color: var(--secondary-color);
+        background: #e0f7ff;
+        transform: scale(1.02);
+    }
 }
 
 .upload-area.dragover {
@@ -122,6 +173,15 @@ body {
 
 .upload-actions {
     margin-top: 16px;
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.upload-actions .btn-secondary {
+    min-width: 140px;
+    flex: 1;
 }
 
 .btn-secondary {
@@ -135,11 +195,14 @@ body {
     font-weight: 600;
     transition: all 0.3s ease;
     box-shadow: var(--shadow);
+    min-height: 44px;
 }
 
-.btn-secondary:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-lg);
+@media (hover: hover) and (pointer: fine) {
+    .btn-secondary:hover {
+        transform: translateY(-2px);
+        box-shadow: var(--shadow-lg);
+    }
 }
 
 .camera-container {
@@ -203,10 +266,12 @@ body {
     box-shadow: var(--shadow);
 }
 
-.btn-change:hover {
-    background: #27ae60;
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-lg);
+@media (hover: hover) and (pointer: fine) {
+    .btn-change:hover {
+        background: #27ae60;
+        transform: translateY(-2px);
+        box-shadow: var(--shadow-lg);
+    }
 }
 
 /* Hidden Class */
@@ -433,11 +498,14 @@ body {
     transition: all 0.3s ease;
     font-weight: 600;
     box-shadow: var(--shadow);
+    min-height: 44px;
 }
 
-.btn-primary:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-lg);
+@media (hover: hover) and (pointer: fine) {
+    .btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: var(--shadow-lg);
+    }
 }
 
 .btn-primary:active {
@@ -465,9 +533,11 @@ body {
     transition: all 0.3s ease;
 }
 
-.info-card:hover {
-    transform: translateY(-5px);
-    box-shadow: var(--shadow-lg);
+@media (hover: hover) and (pointer: fine) {
+    .info-card:hover {
+        transform: translateY(-5px);
+        box-shadow: var(--shadow-lg);
+    }
 }
 
 .info-card h3 {
@@ -508,6 +578,10 @@ body {
 
 /* Responsive Design */
 @media (max-width: 768px) {
+    body {
+        background-attachment: scroll;
+    }
+
     .container {
         padding: 12px;
     }
@@ -533,6 +607,10 @@ body {
         padding: 22px 14px;
     }
 
+    .upload-box {
+        gap: 16px;
+    }
+
     .upload-icon {
         width: 58px;
         height: 58px;
@@ -549,8 +627,24 @@ body {
         width: 100%;
     }
 
+    .upload-actions {
+        flex-wrap: nowrap;
+        gap: 8px;
+    }
+
+    .upload-actions .btn-secondary {
+        min-width: 0;
+        flex: 1;
+        font-size: 0.92em;
+        padding: 10px 8px;
+    }
+
     .camera-actions {
         flex-direction: column;
+    }
+
+    .camera-video {
+        max-height: 55vh;
     }
 
     .preview-wrapper {
@@ -559,6 +653,10 @@ body {
 
     .result-body {
         padding: 18px;
+    }
+
+    .result-card {
+        margin-bottom: 20px;
     }
 
     .info-card {
@@ -589,6 +687,7 @@ body {
     .probability-item {
         flex-direction: column;
         align-items: flex-start;
+        gap: 8px;
     }
 
     .probability-bar-container {
@@ -599,15 +698,54 @@ body {
         width: 100%;
         text-align: right;
     }
+
+    .footer {
+        padding: 20px 12px;
+    }
+
+    .footer p {
+        font-size: 0.92em;
+    }
 }
 
 @media (max-width: 480px) {
+    .container {
+        padding: 10px;
+    }
+
     .header h1 {
         font-size: 1.55em;
     }
 
+    .upload-section {
+        padding: 12px;
+    }
+
+    .upload-area {
+        padding: 18px 10px;
+    }
+
+    .upload-icon {
+        width: 50px;
+        height: 50px;
+    }
+
+    .upload-area p {
+        font-size: 0.92em;
+    }
+
     .result-header {
         padding: 18px;
+    }
+
+    .result-body {
+        padding: 14px;
+    }
+
+    .description-box,
+    .probabilities-box,
+    .solutions-box {
+        margin-bottom: 18px;
     }
 
     .result-header h2 {
@@ -616,5 +754,14 @@ body {
 
     .emoji {
         font-size: 1.8em;
+    }
+
+    .probability-label {
+        min-width: 0;
+        width: 100%;
+    }
+
+    .info-card {
+        padding: 14px;
     }
 }
